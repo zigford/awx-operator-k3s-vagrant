@@ -1,0 +1,77 @@
+---
+
+- hosts: default
+  vars:
+    awx_operator_version: 0.8.0
+  tasks:
+    - name: Download k3s install script.
+      get_url:
+        url: https://get.k3s.io
+        dest: /root/get_k3s.sh
+        mode: 0755
+        owner: root
+        group: root
+      become: yes
+
+    - name: Launch k3s install script.
+      command: /root/get_k3s.sh --write-kubeconfig-mode 644
+      args:
+        creates: /usr/local/bin/k3s
+      become: true
+
+    - name: Install kubernetes repo
+      copy:
+        src: kubernetes.repo
+        dest: /etc/yum.repos.d
+        owner: root
+        group: root
+        mode: u=rw,go=r
+      become: true
+
+    - name: Install kubernetes repo key.
+      rpm_key:
+        key: https://packages.cloud.google.com/yum/doc/yum-key.gpg
+        state: present
+      become: true
+
+    - name: Install bits we need.
+      dnf:
+        name:
+          - kubectl
+          - python3-pip
+      become: true
+
+    - name: Install openshift python module.
+      pip:
+        name: openshift
+      become: true
+
+    - name: Get AWX Operator definition
+      uri:
+        url: https://raw.githubusercontent.com/ansible/awx-operator/{{ awx_operator_version }}/deploy/awx-operator.yaml
+        return_content: yes
+      register: awx_operator
+
+    # /usr/local/bin/k3s kubectl apply -f https://raw.githubusercontent.com/ansible/awx-operator/0.8.0/deploy/awx-operator.yaml
+      
+    - name: Register AWX Operator custom kind.
+      community.okd.k8s:
+        definition: "{{ awx_operator.content | from_yaml_all | list }}"
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        namespace: default
+
+    # /usr/local/bin/k3s kubectl apply -f /vagrant/files/my-awx.yml
+
+    - name: Create AWX admin secret.
+      community.okd.k8s:
+        apply: yes
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        namespace: default
+        definition: "{{ lookup('file', 'awx-admin-pwd.yml') }}"
+
+    - name: Create AWX Operator
+      community.okd.k8s:
+        apply: yes
+        kubeconfig: /etc/rancher/k3s/k3s.yaml
+        namespace: default
+        definition: "{{ lookup('file', 'my-awx.yml') }}"

@@ -1,0 +1,10 @@
+---
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx
+spec:
+  tower_ingress_type: Ingress
+  tower_hostname: awx.zigford.org
+  tower_loadbalancer_protocol: http
+  tower_admin_password_secret: awx-admin-password
